@@ -22,4 +22,6 @@ docker exec -i yesyou-test-db psql -q -U postgres -v ON_ERROR_STOP=1 < supabase/
 docker exec -i yesyou-test-db psql -q -U postgres -v ON_ERROR_STOP=1 < tests/question-upgrade-before.sql
 docker exec -i yesyou-test-db psql -q -U postgres -v ON_ERROR_STOP=1 < supabase/migrations/202611170003_import_user_questions.sql
 docker exec -i yesyou-test-db psql -q -U postgres -v ON_ERROR_STOP=1 < tests/question-upgrade-after.sql
+docker exec -i yesyou-test-db psql -q -U postgres -v ON_ERROR_STOP=1 < supabase/migrations/202611170004_party_flow.sql
 python3 tests/database.py
+python3 tests/party_database.py

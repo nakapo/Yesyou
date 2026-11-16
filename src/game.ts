@@ -21,6 +21,9 @@ export type Vote = {
   answer: boolean | null;
 };
 export type Game = {
+  preparing_next?: boolean;
+  next_owner?: string | null;
+  next_question?: string | null;
   version: number;
   id: string;
   code: string;
@@ -51,7 +54,7 @@ export function demoGame(): Game {
   return {
     id: "demo",
     version: 0,
-    code: "pizza-demo",
+    code: "pizza",
     name: "วงเพื่อนตัวดี",
     host: "1",
     state: "LOBBY",

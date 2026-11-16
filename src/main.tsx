@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { QRCodeSVG } from "qrcode.react";
 import { Avatar } from "./Avatar";
+import { avatars } from "./avatars";
 import { configured, identity, rpc, supabase } from "./api";
 import { demoGame, ranked, type Game } from "./game";
 import questions from "./questions.json";
@@ -10,7 +11,7 @@ function App() {
   const [page, setPage] = useState<"home" | "create" | "join">(
       location.search.includes("join") ? "join" : "home",
     ),
-    [game, setGame] = useState<Game | null>(null),
+    [snapshot, setGame] = useState<Game | null>(null),
     [demo, setDemo] = useState(false),
     [room, setRoom] = useState(localStorage.getItem("yesyou-room") || ""),
     [name, setName] = useState(""),
@@ -22,12 +23,33 @@ function App() {
     [error, setError] = useState(""),
     [choice, setChoice] = useState<boolean | null>(null),
     [scores, setScores] = useState(false),
+    [panel, setPanel] = useState(false),
     [connected, setConnected] = useState(navigator.onLine),
     [confirm, setConfirm] = useState<{
       text: string;
       action: () => void;
     } | null>(null),
     [copied, setCopied] = useState(false);
+  const game =
+    demo &&
+    snapshot?.state === "REVEALED" &&
+    snapshot.me === snapshot.next_owner &&
+    snapshot.next_question
+      ? {
+          ...snapshot,
+          state: "PREPARING" as const,
+          owner: snapshot.next_owner,
+          question: snapshot.next_question,
+          round: snapshot.round + 1,
+          answer: null,
+          votes: [],
+          queue: (snapshot.queue.length
+            ? snapshot.queue
+            : snapshot.players.map((p) => p.id)
+          ).slice(1),
+          preparing_next: true,
+        }
+      : snapshot;
   const used = useRef<number[]>([]);
   const currentRoom = useRef(room);
   currentRoom.current = room;
@@ -89,9 +111,10 @@ function App() {
   }, [room, demo]);
   useEffect(() => {
     setChoice(null);
+    setPanel(false);
   }, [game?.round, game?.state, game?.me]);
   useEffect(() => {
-    if (!confirm && !scores) return;
+    if (!confirm && !scores && !panel) return;
     const previous = document.activeElement as HTMLElement | null;
     const dialog = document.querySelector<HTMLElement>(
       confirm ? '[role="alertdialog"]' : '[role="dialog"]',
@@ -100,6 +123,7 @@ function App() {
       if (event.key === "Escape") {
         setConfirm(null);
         setScores(false);
+        setPanel(false);
       }
       if (event.key !== "Tab" || !dialog) return;
       const nodes = Array.from(
@@ -126,7 +150,30 @@ function App() {
       document.body.style.overflow = overflow;
       previous?.focus();
     };
-  }, [!!confirm, scores]);
+  }, [!!confirm, scores, panel]);
+  useEffect(() => {
+    const card = document.querySelector<HTMLElement>(".playing .question-card");
+    const text = card?.querySelector<HTMLElement>(".question");
+    if (!card || !text) return;
+    const fit = () => {
+      if (!matchMedia("(max-width: 767px)").matches) {
+        text.style.fontSize = "";
+        return;
+      }
+      text.style.fontSize = "26px";
+      for (
+        let n = 25;
+        n >= 18 && card.scrollHeight > card.clientHeight + 1;
+        n--
+      )
+        text.style.fontSize = n + "px";
+    };
+    const observer = new ResizeObserver(fit);
+    observer.observe(card);
+    fit();
+    document.fonts.ready.then(fit);
+    return () => observer.disconnect();
+  }, [game?.state, game?.question, game?.me]);
   function draw(g: Game) {
     let pool = questions.filter(
       (q) => (g.spicy || !q.spice) && !used.current.includes(q.id),
@@ -140,8 +187,8 @@ function App() {
     g.question = q.text;
   }
   function demoAction(action: string, value: Record<string, unknown>) {
-    if (!game) return;
-    const g = structuredClone(game);
+    if (!snapshot) return;
+    const g = structuredClone(snapshot);
     g.version++;
     if (action === "spicy") g.spicy = !!value.enabled;
     if (action === "admit") g.admitting = !g.admitting;
@@ -152,8 +199,23 @@ function App() {
       g.queue = g.players.slice(1).map((p) => p.id);
       draw(g);
     }
-    if (action === "reroll") draw(g);
+    if (action === "reroll") {
+      if (g.state === "REVEALED" && g.me === g.next_owner) {
+        const copy = structuredClone(g);
+        draw(copy);
+        g.next_question = copy.question;
+      } else draw(g);
+    }
     if (action === "open") {
+      if (g.state === "REVEALED" && g.me === g.next_owner) {
+        if (!g.queue.length) g.queue = g.players.map((p) => p.id);
+        g.owner = g.queue.shift()!;
+        g.round++;
+        g.question = g.next_question ?? null;
+        g.next_question = null;
+        g.next_owner = null;
+        g.answer = null;
+      }
       g.state = "GUESSING";
       g.votes = g.players
         .filter((p) => p.id !== g.owner)
@@ -197,6 +259,7 @@ function App() {
       });
     }
     if (action === "next" || action === "skip") {
+      const prepared = g.state === "REVEALED" ? g.next_question : null;
       if (!g.queue.length) g.queue = g.players.map((p) => p.id);
       g.owner = g.queue.shift()!;
       g.round++;
@@ -204,9 +267,16 @@ function App() {
       g.answer = null;
       g.votes = [];
       g.admitting = false;
-      draw(g);
+      if (prepared) g.question = prepared;
+      else draw(g);
+      g.next_owner = null;
+      g.next_question = null;
     }
-    if (action === "finish") g.state = "FINISHED";
+    if (action === "finish") {
+      g.state = "FINISHED";
+      g.next_owner = null;
+      g.next_question = null;
+    }
     if (action === "restart" || action === "lobby") {
       g.state = "LOBBY";
       g.players.forEach((p) => (p.score = 0));
@@ -214,6 +284,8 @@ function App() {
       g.round = 0;
       g.votes = [];
       used.current = [];
+      g.next_owner = null;
+      g.next_question = null;
     }
     if (action === "reorder") {
       const ids = value.ids as string[];
@@ -221,6 +293,15 @@ function App() {
         .sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id))
         .forEach((p, i) => (p.seat = i + 1));
       g.queue = ids.filter((id) => g.queue.includes(id));
+    }
+    if (g.state === "REVEALED") {
+      const next = g.queue[0] || g.players[0].id;
+      if (!g.next_question || g.next_owner !== next) {
+        const copy = structuredClone(g);
+        draw(copy);
+        g.next_owner = next;
+        g.next_question = copy.question;
+      }
     }
     setGame(g);
   }
@@ -480,7 +561,7 @@ function App() {
                       required
                       value={code}
                       onChange={(e) => setCode(e.target.value.toLowerCase())}
-                      placeholder="เช่น pizza-a1b2c3"
+                      placeholder="เช่น pizza"
                       autoCapitalize="none"
                       spellCheck={false}
                     />
@@ -501,12 +582,12 @@ function App() {
                 <fieldset>
                   <legend>เลือกหน้าประจำวง</legend>
                   <div className="avatar-picker">
-                    {Array.from({ length: 8 }, (_, i) => (
+                    {avatars.map((a, i) => (
                       <button
                         type="button"
                         className={avatar === i ? "selected" : ""}
                         aria-pressed={avatar === i}
-                        aria-label={`เลือกคาแรกเตอร์ ${i + 1}`}
+                        aria-label={`เลือก ${a.name}`}
                         onClick={() => setAvatar(i)}
                         key={i}
                       >
@@ -534,6 +615,7 @@ function App() {
         <div
           className={
             "game-shell " +
+            (!["LOBBY", "FINISHED"].includes(game.state) ? "playing " : "") +
             (["LOBBY", "FINISHED"].includes(game.state)
               ? game.state.toLowerCase()
               : "")
@@ -802,7 +884,11 @@ function App() {
                     isOwner ? (
                       <>
                         <div className="question-card">
-                          <span className="eyebrow">FOR YOUR EYES ONLY</span>
+                          <span className="eyebrow">
+                            {game.preparing_next
+                              ? "ตาถัดไปของคุณ · อ่านเตรียมได้เลย"
+                              : "FOR YOUR EYES ONLY"}
+                          </span>
                           <p className="question">{game.question}</p>
                           <small>
                             อ่านให้เพื่อนฟัง แต่อย่าเพิ่งหลุดคำตอบนะ
@@ -956,28 +1042,12 @@ function App() {
                                 ? "✦ ✓ ทายถูก! +1"
                                 : "☺ รอบนี้อ่านใจพลาด!"}
                         </h2>
-                        {game.votes
-                          .filter((v) => !v.excluded)
-                          .map((v) => (
-                            <p key={v.player}>
-                              {
-                                game.players.find((p) => p.id === v.player)
-                                  ?.name
-                              }
-                              <b>
-                                {v.answer === game.answer
-                                  ? "✓ ทายถูก +1"
-                                  : "✕ พลาดนะ!"}{" "}
-                                · {v.answer ? "YES" : "NO"}
-                              </b>
-                            </p>
-                          ))}
                       </div>
                       {host || isOwner || game.me === nextOwner ? (
                         button(
                           game.me === nextOwner
-                            ? "ตาถัดไปเป็นคุณ พร้อมแล้วเริ่มเลย →"
-                            : "คุยให้จุใจ แล้วไปตาถัดไป →",
+                            ? "ตาถัดไปพร้อมแล้ว →"
+                            : "ไปตาถัดไป →",
                           () => act("next"),
                         )
                       ) : (
@@ -987,120 +1057,14 @@ function App() {
                       )}
                     </>
                   )}
-                  {["GUESSING", "READY_TO_REVEAL"].includes(game.state) && (
-                    <div className="response-list">
-                      <h3>ใครส่งแล้วบ้าง?</h3>
-                      {game.votes.map((v) => (
-                        <div key={v.player}>
-                          <span>
-                            {game.players.find((p) => p.id === v.player)?.name}
-                          </span>
-                          <b>
-                            {v.excluded
-                              ? "ข้ามตานี้"
-                              : v.answered
-                                ? "✓ ส่งแล้ว"
-                                : "… ยังไม่ตอบ"}
-                          </b>
-                          {host &&
-                            !v.answered &&
-                            !v.excluded &&
-                            button(
-                              "ตัดจากตานี้",
-                              () =>
-                                setConfirm({
-                                  text: "ตัดผู้เล่นนี้ออกจากการทายเฉพาะตานี้? จะไม่ได้คะแนนและไม่ต้องรอคำตอบ",
-                                  action: () =>
-                                    act("exclude", { player: v.player }),
-                                }),
-                              "tiny",
-                            )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  <div className="queue">
-                    <small>
-                      คิวถัดไป ·{" "}
-                      {game.queue.length
-                        ? "ผู้ที่ยังไม่ได้เล่นในรอบวงนี้"
-                        : "เริ่มรอบวงใหม่"}
-                    </small>
-                    <p>
-                      {(game.queue.length
-                        ? game.queue
-                        : game.players.map((p) => p.id)
-                      )
-                        .map(
-                          (id) => game.players.find((p) => p.id === id)?.name,
-                        )
-                        .join(" → ")}
-                    </p>
+                  <div className="play-utilities">
+                    <button className="tiny" onClick={() => setPanel(true)}>
+                      ☰ วง / คิว{host ? " / Host" : ""}
+                    </button>
+                    <button className="tiny" onClick={() => setScores(true)}>
+                      ♛ คะแนน
+                    </button>
                   </div>
-                  {host && (
-                    <details className="host-tools">
-                      <summary>เครื่องมือ Host</summary>
-                      {["PREPARING", "REVEALED"].includes(game.state) && (
-                        <>
-                          {button(
-                            game.admitting
-                              ? "ปิดรับผู้เล่นเพิ่ม"
-                              : "เปิดรับผู้เล่นระหว่างตา",
-                            () => act("admit"),
-                            "secondary",
-                          )}
-                          <p>
-                            รหัสวง {game.code} ·
-                            ผู้เล่นใหม่เริ่มทายได้เมื่อตาถัดไปเปิด
-                          </p>
-                          <h3>ปรับลำดับตาถัดไป</h3>
-                          {game.players.map((p, i) => (
-                            <div className="reorder-row" key={p.id}>
-                              <span>
-                                {i + 1}. {p.name}
-                              </span>
-                              <button
-                                disabled={i === 0 || busy}
-                                aria-label={`เลื่อน ${p.name} ขึ้น`}
-                                onClick={() => reorder(i, i - 1)}
-                              >
-                                ↑
-                              </button>
-                              <button
-                                disabled={i === game.players.length - 1 || busy}
-                                aria-label={`เลื่อน ${p.name} ลง`}
-                                onClick={() => reorder(i, i + 1)}
-                              >
-                                ↓
-                              </button>
-                            </div>
-                          ))}
-                        </>
-                      )}
-                      {game.state !== "REVEALED" &&
-                        button(
-                          "ข้ามตานี้โดยไม่คิดคะแนน",
-                          () =>
-                            setConfirm({
-                              text: "ข้ามตาของเจ้าของคำถามโดยไม่คิดคะแนน?",
-                              action: () => act("skip"),
-                            }),
-                          "secondary",
-                        )}
-                      {button(
-                        "จบเกม",
-                        () =>
-                          setConfirm({
-                            text:
-                              game.state === "REVEALED"
-                                ? "จบเกมและดูสรุป? คะแนนตานี้นับแล้ว"
-                                : "จบเกม? ตาที่ยังไม่เฉลยจะไม่ได้คะแนน",
-                            action: () => act("finish"),
-                          }),
-                        "danger",
-                      )}
-                    </details>
-                  )}
                 </>
               )}
             </section>
@@ -1122,6 +1086,150 @@ function App() {
             </span>
             <span>YES, YOU! · PLAY NICE, GUESS WILD</span>
           </footer>
+        </div>
+      )}
+      {panel && game && (
+        <div className="modal-backdrop" onClick={() => setPanel(false)}>
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-label="ข้อมูลวงและเครื่องมือ"
+            className="utility-sheet"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button autoFocus className="close" onClick={() => setPanel(false)}>
+              ปิด ×
+            </button>
+            <h2>วงของเรา</h2>{" "}
+            {["GUESSING", "READY_TO_REVEAL"].includes(game.state) && (
+              <div className="response-list">
+                <h3>ใครส่งแล้วบ้าง?</h3>
+                {game.votes.map((v) => (
+                  <div key={v.player}>
+                    <span>
+                      {game.players.find((p) => p.id === v.player)?.name}
+                    </span>
+                    <b>
+                      {v.excluded
+                        ? "ข้ามตานี้"
+                        : v.answered
+                          ? "✓ ส่งแล้ว"
+                          : "… ยังไม่ตอบ"}
+                    </b>
+                    {host &&
+                      !v.answered &&
+                      !v.excluded &&
+                      button(
+                        "ตัดจากตานี้",
+                        () =>
+                          setConfirm({
+                            text: "ตัดผู้เล่นนี้ออกจากการทายเฉพาะตานี้? จะไม่ได้คะแนนและไม่ต้องรอคำตอบ",
+                            action: () => act("exclude", { player: v.player }),
+                          }),
+                        "tiny",
+                      )}
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="queue">
+              <small>
+                คิวถัดไป ·{" "}
+                {game.queue.length
+                  ? "ผู้ที่ยังไม่ได้เล่นในรอบวงนี้"
+                  : "เริ่มรอบวงใหม่"}
+              </small>
+              <p>
+                {(game.queue.length
+                  ? game.queue
+                  : game.players.map((p) => p.id)
+                )
+                  .map((id) => game.players.find((p) => p.id === id)?.name)
+                  .join(" → ")}
+              </p>
+            </div>
+            {host && (
+              <details className="host-tools">
+                <summary>เครื่องมือ Host</summary>
+                {["PREPARING", "REVEALED"].includes(game.state) && (
+                  <>
+                    {button(
+                      game.admitting
+                        ? "ปิดรับผู้เล่นเพิ่ม"
+                        : "เปิดรับผู้เล่นระหว่างตา",
+                      () => act("admit"),
+                      "secondary",
+                    )}
+                    <p>
+                      รหัสวง {game.code} ·
+                      ผู้เล่นใหม่เริ่มทายได้เมื่อตาถัดไปเปิด
+                    </p>
+                    <h3>ปรับลำดับตาถัดไป</h3>
+                    {game.players.map((p, i) => (
+                      <div className="reorder-row" key={p.id}>
+                        <span>
+                          {i + 1}. {p.name}
+                        </span>
+                        <button
+                          disabled={i === 0 || busy}
+                          aria-label={`เลื่อน ${p.name} ขึ้น`}
+                          onClick={() => reorder(i, i - 1)}
+                        >
+                          ↑
+                        </button>
+                        <button
+                          disabled={i === game.players.length - 1 || busy}
+                          aria-label={`เลื่อน ${p.name} ลง`}
+                          onClick={() => reorder(i, i + 1)}
+                        >
+                          ↓
+                        </button>
+                      </div>
+                    ))}
+                  </>
+                )}
+                {game.state !== "REVEALED" &&
+                  !game.preparing_next &&
+                  button(
+                    "ข้ามตานี้โดยไม่คิดคะแนน",
+                    () =>
+                      setConfirm({
+                        text: "ข้ามตาของเจ้าของคำถามโดยไม่คิดคะแนน?",
+                        action: () => act("skip"),
+                      }),
+                    "secondary",
+                  )}
+                {button(
+                  "จบเกม",
+                  () =>
+                    setConfirm({
+                      text:
+                        game.state === "REVEALED"
+                          ? "จบเกมและดูสรุป? คะแนนตานี้นับแล้ว"
+                          : "จบเกม? ตาที่ยังไม่เฉลยจะไม่ได้คะแนน",
+                      action: () => act("finish"),
+                    }),
+                  "danger",
+                )}
+              </details>
+            )}
+            {game.state === "REVEALED" && (
+              <div className="result">
+                <h3>ผลทายตานี้</h3>{" "}
+                {game.votes
+                  .filter((v) => !v.excluded)
+                  .map((v) => (
+                    <p key={v.player}>
+                      {game.players.find((p) => p.id === v.player)?.name}
+                      <b>
+                        {v.answer === game.answer ? "✓ ทายถูก +1" : "✕ พลาดนะ!"}{" "}
+                        · {v.answer ? "YES" : "NO"}
+                      </b>
+                    </p>
+                  ))}
+              </div>
+            )}
+          </section>
         </div>
       )}
       {scores && (
