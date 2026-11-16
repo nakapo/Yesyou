@@ -19,4 +19,7 @@ create publication supabase_realtime;
 SQL
 docker exec -i yesyou-test-db psql -q -U postgres -v ON_ERROR_STOP=1 < supabase/migrations/202611170001_game.sql
 docker exec -i yesyou-test-db psql -q -U postgres -v ON_ERROR_STOP=1 < supabase/migrations/202611170002_questions.sql
+docker exec -i yesyou-test-db psql -q -U postgres -v ON_ERROR_STOP=1 < tests/question-upgrade-before.sql
+docker exec -i yesyou-test-db psql -q -U postgres -v ON_ERROR_STOP=1 < supabase/migrations/202611170003_import_user_questions.sql
+docker exec -i yesyou-test-db psql -q -U postgres -v ON_ERROR_STOP=1 < tests/question-upgrade-after.sql
 python3 tests/database.py

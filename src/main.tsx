@@ -671,7 +671,7 @@ function App() {
                             act("spicy", { enabled: e.target.checked })
                           }
                         />
-                        เปิดคำถามแซ่บแบบสมัครใจ 🌶
+                        เปิดคำถามแซ่บ / 18+ 🌶
                       </label>
                       {button(
                         `เริ่มเกม · ${game.players.length} คน →`,
@@ -680,7 +680,7 @@ function App() {
                         game.players.length < 3,
                       )}
                       <p className="hint">
-                        ขั้นต่ำ 3 คน · ทุกคนยินยอมก่อนเปิดหมวดแซ่บ
+                        ขั้นต่ำ 3 คน · เปิดแซ่บเมื่อทุกคนอายุ 18+ และยินยอม
                       </p>
                     </>
                   ) : (

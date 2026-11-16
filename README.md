@@ -34,7 +34,7 @@ Demo ไม่เก็บคะแนนหรือสถานะข้าม
 1. ไปที่ https://supabase.com สร้าง Project ใหม่ จดรหัสผ่านฐานข้อมูลไว้กับตัวเอง **ไม่ต้องส่งรหัสผ่านมาในแชต และห้ามใส่ใน GitHub**
 2. ที่ **Authentication → Sign In / Providers → Anonymous** เปิดอนุญาต anonymous sign-ins ชื่อเมนูอาจต่างเล็กน้อย
 3. ไปที่ **SQL Editor** เปิด New query คัดลอกไฟล์ `supabase/migrations/202611170001_game.sql` ทั้งไฟล์ แล้วกด Run
-4. เปิด query ใหม่ คัดลอก `supabase/migrations/202611170002_questions.sql` ทั้งไฟล์ แล้วกด Run
+4. เปิด query ใหม่ คัดลอก `supabase/migrations/202611170002_questions.sql` ทั้งไฟล์ แล้วกด Run จากนั้นทำเช่นเดียวกันกับ `supabase/migrations/202611170003_import_user_questions.sql` เพื่อใช้คลังจากเอกสารผู้ใช้ หากเคยรันสองไฟล์แรกแล้ว ให้รันเฉพาะไฟล์ 003 เพิ่ม
 5. SQL แรกเพิ่ม `public.room_events` เข้า publication `supabase_realtime` แล้ว ตรวจที่ Database → Publications ว่ามีตารางนี้ ไม่ต้องเปิด realtime ให้ตารางอื่น
 6. ที่ **Project Settings → API / API Keys** คัดลอก Project URL และ **Publishable key** (ขึ้นต้น `sb_publishable_…` สำหรับโปรเจกต์ใหม่)
 7. สร้างไฟล์ `.env` ที่โฟลเดอร์เดียวกับ `package.json` โดยคัดลอกจาก `.env.example` แล้วเติมเพียงสองค่านี้:
@@ -84,7 +84,9 @@ SQL migrations ใช้ครั้งเดียวบนฐานข้อ�
 
 ## แก้/เพิ่มคำถาม
 
-ข้อมูลอยู่ใน `src/questions.json` มี 120 ข้อ ค่า `spice: 0` เป็นค่าเริ่มต้น `spice: 1` เปิดเมื่อ Host ยินยอม
+ข้อมูลอยู่ใน `src/questions.json` มี 498 ข้อจากเอกสารของผู้ใช้ (394 ข้อเริ่มต้น และ 104 ข้อแซ่บ/18+) ค่า `spice: 0` เป็นค่าเริ่มต้น `spice: 1` เปิดเมื่อ Host ยินยอม
+รายละเอียดการนำเข้าจากเอกสาร การกำหนดช่วงเวลา 30 วัน และรายการที่แยกออก อยู่ใน [QUESTIONS.md](QUESTIONS.md)
+
 แต่ละข้อมี `id`, `category`, `text`, `spice` ใช้ id ใหม่ที่ไม่ซ้ำ รักษาคำถาม YES/NO ประเด็นเดียว
 
 หลังแก้ไฟล์:
@@ -93,7 +95,7 @@ SQL migrations ใช้ครั้งเดียวบนฐานข้อ�
 npm run questions:sql
 ```
 
-นำเนื้อหา `supabase/questions-upsert.sql` ไป Run ใน SQL Editor แล้ว deploy หน้าเว็บใหม่ เพื่อให้ Demo ใช้คลังเดียวกัน คำสั่งนี้เพิ่ม/แก้ตาม id ไม่ลบคำถามเดิม หากต้องการเลิกใช้คำถามให้เปลี่ยนข้อความของ id นั้น แก้ฐานข้อมูลนอกเกมที่กำลังเล่นเพื่อไม่เปลี่ยนคำถามกลางตา
+นำเนื้อหา `supabase/questions-upsert.sql` ไป Run ใน SQL Editor แล้ว deploy หน้าเว็บใหม่ เพื่อให้ Demo ใช้คลังเดียวกัน ต้องรัน migration 003 ก่อน คำสั่งนี้เพิ่ม/แก้ตาม id และปิด active ของข้อที่ถูกนำออกจาก JSON โดยเก็บแถวเดิมไว้ หากเพิ่มเนื้อหาใหม่ให้ใช้ id ใหม่ ส่วนการแก้ข้อความของ id เดิมควรทำนอกเกมที่กำลังเล่นเพื่อไม่เปลี่ยนคำถามกลางตา
 
 ## โครงสร้างและความปลอดภัย
 

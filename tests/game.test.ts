@@ -36,3 +36,22 @@ describe("คลังคำถาม", () => {
     expect(questions.some((q) => q.spice)).toBe(true);
   });
 });
+
+describe("คลังจากเอกสารผู้ใช้", () => {
+  it("นำเข้า 498 ข้อ ไม่มีช่องช่วงเวลาที่ยังไม่กำหนดและไม่มีข้อความซ้ำ", () => {
+    expect(questions).toHaveLength(498);
+    expect(new Set(questions.map((q) => q.text)).size).toBe(498);
+    expect(
+      questions.every((q) => q.id >= 1001 && !q.text.includes("[ช่วงเวลา]")),
+    ).toBe(true);
+  });
+  it("ปิดทุกหมวด 18+ เป็นค่าเริ่มต้น", () => {
+    expect(
+      questions
+        .filter((q) => q.category.includes("18+"))
+        .every((q) => q.spice === 1),
+    ).toBe(true);
+    expect(questions.filter((q) => !q.spice)).toHaveLength(394);
+    expect(questions.filter((q) => q.spice)).toHaveLength(104);
+  });
+});
