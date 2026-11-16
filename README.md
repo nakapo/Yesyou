@@ -8,7 +8,8 @@ React + TypeScript + Vite + Tailwind CSS / Supabase Postgres, anonymous Auth แ
 - มีหน้าเข้าเกม สร้าง/เข้าวง Lobby จัดที่นั่ง เล่นทุกสถานะ คะแนน และสรุปอันดับร่วม
 - มี Demo Mode แยกชัดเจน ใช้ดูหน้าจอและกติกาในเครื่องเดียว ไม่ใช่ multiplayer
 - มี backend SQL จริง พร้อมการตรวจสิทธิ์ การซ่อนคำถาม/คำทาย และ transaction ให้คะแนน
-- ยังไม่ได้เชื่อม Supabase ของเจ้าของโปรเจกต์ หรือเผยแพร่บน Netlify
+- เชื่อม Supabase ของเจ้าของโปรเจกต์แล้ว และทดสอบออนไลน์ผ่าน API + websocket ด้วย 3 anonymous sessions สำเร็จ
+- ยังไม่ได้เผยแพร่บน Netlify หรือทดสอบการกดจริงผ่าน browser บนมือถือ
 - ตรวจ build, unit tests และ integration tests บน PostgreSQL ใน Docker ได้ ผลล่าสุดอยู่ใน `TESTING.md`
 - ยังต้องตรวจ browser บนมือถือ/desktop และทดสอบ Supabase Auth + API + websocket หลังตั้งค่า
 
